@@ -1,0 +1,4 @@
+-- Canonical schema file for the Lost-and-Found project.
+--
+-- The team will define the ERD first, then add the agreed SQLite DDL here.
+-- Do not add domain tables until requirements are finalized.
