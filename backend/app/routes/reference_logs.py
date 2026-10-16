@@ -1,35 +1,51 @@
 """
-REFERENCE EXAMPLE: Isolated End-to-End SystemLog Implementation
+REFERENCE EXAMPLE: Isolated End-to-End SystemLog Implementation for Microsoft SQL Server
 This module demonstrates:
-1. Raw SQL table definition (CREATE TABLE).
+1. Raw T-SQL table definition (CREATE TABLE with IDENTITY primary key).
 2. Pydantic DTO model for parsing JSON request bodies.
-3. Raw SQL write (INSERT) with parameterized queries.
+3. Raw SQL write (INSERT ... OUTPUT inserted.id / %s parameters).
 4. Raw SQL read (SELECT) returning pure JSON lists.
 """
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-import sqlite3
-from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
+import pymssql
+import logging
 
 from app.database import get_db_connection
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/reference/logs", tags=["reference-example"])
 
 
-# --- 1. Raw SQL Schema Initialization for Reference Example ---
+# --- 1. Raw T-SQL Schema Initialization for Reference Example ---
 def init_reference_table():
-    """Initializes the mock SystemLog table with explicit raw SQL."""
-    conn = get_db_connection()
+    """Initializes the mock SystemLog table with explicit raw T-SQL in MSSQL."""
     try:
-        with conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS system_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    message TEXT NOT NULL,
-                    timestamp TEXT NOT NULL
+        conn = get_db_connection()
+    except Exception as e:
+        logger.warning(
+            f"Could not connect to MS SQL Server to run init_reference_table: {e}. "
+            "Ensure SQL Server is running and credentials in .env are correct."
+        )
+        return
+
+    try:
+        with conn.cursor() as cursor:
+            # Explicit T-SQL table creation: IDENTITY(1,1) for auto-incrementing ID in MS SQL Server
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='system_logs' AND xtype='U')
+                CREATE TABLE system_logs (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    message NVARCHAR(MAX) NOT NULL,
+                    timestamp NVARCHAR(50) NOT NULL
                 );
             """)
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error initializing system_logs table: {e}")
+        conn.rollback()
     finally:
         conn.close()
 
@@ -42,15 +58,23 @@ class SystemLogCreate(BaseModel):
 # --- 3. Route Handlers Using Explicit Raw SQL ---
 @router.get("/")
 def get_system_logs():
-    """Fetches all system logs using a raw SQL SELECT query."""
-    conn = get_db_connection()
+    """Fetches all system logs using a raw T-SQL SELECT query from MS SQL Server."""
     try:
-        cursor = conn.cursor()
-        # Raw SQL query
-        cursor.execute("SELECT id, message, timestamp FROM system_logs ORDER BY id DESC;")
-        rows = cursor.fetchall()
-        # Convert sqlite3.Row objects to standard Python dicts for pure JSON serialization
-        return [dict(row) for row in rows]
+        conn = get_db_connection()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Database connection error: {str(e)}. Please verify your MS SQL Server instance is reachable."
+        )
+
+    try:
+        with conn.cursor(as_dict=True) as cursor:
+            # Raw T-SQL query
+            cursor.execute("SELECT id, message, timestamp FROM system_logs ORDER BY id DESC;")
+            rows = cursor.fetchall()
+            return rows
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database query error: {str(e)}")
     finally:
         conn.close()
 
@@ -58,28 +82,40 @@ def get_system_logs():
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def create_system_log(payload: SystemLogCreate):
     """
-    Inserts a new system log using raw SQL parameterized INSERT.
+    Inserts a new system log using raw SQL parameterized INSERT in MS SQL Server.
+    Uses 'OUTPUT inserted.id' to retrieve the newly generated identity ID.
     Unpacks Pydantic DTO into raw SQL parameters to prevent SQL injection.
     """
-    conn = get_db_connection()
-    current_timestamp = datetime.utcnow().isoformat() + "Z"
     try:
-        with conn:
-            cursor = conn.cursor()
-            # Raw SQL parameterized query - DO NOT concatenate user input into SQL strings!
-            cursor.execute(
-                "INSERT INTO system_logs (message, timestamp) VALUES (?, ?);",
-                (payload.message, current_timestamp)
-            )
-            created_id = cursor.lastrowid
-        
+        conn = get_db_connection()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Database connection error: {str(e)}. Please verify your MS SQL Server instance is reachable."
+        )
+
+    current_timestamp = datetime.now(timezone.utc).isoformat()
+    try:
+        with conn.cursor(as_dict=True) as cursor:
+            # Parameterized query (%s is the standard pymssql parameter placeholder)
+            # OUTPUT inserted.id returns the generated IDENTITY column value directly
+            sql = """
+                INSERT INTO system_logs (message, timestamp)
+                OUTPUT inserted.id
+                VALUES (%s, %s);
+            """
+            cursor.execute(sql, (payload.message, current_timestamp))
+            row = cursor.fetchone()
+            created_id = row["id"] if row else None
+        conn.commit()
+
         return {
             "id": created_id,
             "message": payload.message,
             "timestamp": current_timestamp
         }
-    except sqlite3.Error as e:
+    except Exception as e:
+        conn.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     finally:
         conn.close()
-

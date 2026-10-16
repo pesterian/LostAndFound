@@ -97,7 +97,7 @@
   {#if loading && logs.length === 0}
     <p aria-busy="true">Loading logs from database...</p>
   {:else if logs.length === 0}
-    <p><em>No logs recorded yet in SQLite. Try creating one above!</em></p>
+    <p><em>No logs recorded yet in Microsoft SQL Server. Try creating one above!</em></p>
   {:else}
     <!-- Semantic table styled natively by Pico.css -->
     <div class="overflow-auto">

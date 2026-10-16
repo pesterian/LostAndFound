@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Lost and Found API",
-    description="University Database Project API (Raw SQL + SQLite)",
+    description="University Database Project API (Raw T-SQL + Microsoft SQL Server)",
     lifespan=lifespan,
 )
 
@@ -42,5 +42,7 @@ app.include_router(reference_router)
 
 @app.get("/")
 def health_check():
-    return {"status": "ok", "message": "Lost and Found backend is running"}
-
+    return {
+        "status": "ok",
+        "message": "Lost and Found backend is running (Microsoft SQL Server raw engine)",
+    }

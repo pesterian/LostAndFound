@@ -25,8 +25,8 @@
         Welcome to the starter template. Here is how your team should organize the database project:
       </p>
       <ul>
-        <li><strong>Backend:</strong> FastAPI with pure Python <code>sqlite3</code> and pure JSON responses.</li>
-        <li><strong>Database Layer:</strong> All table definitions (DDL) and queries (DML) MUST use explicit, raw SQL strings. No ORMs (like SQLAlchemy or SQLModel).</li>
+        <li><strong>Backend:</strong> FastAPI with raw <code>pymssql</code> driver and pure JSON responses.</li>
+        <li><strong>Database Layer:</strong> All table definitions (DDL) and queries (DML) MUST use explicit, raw T-SQL strings connected to Microsoft SQL Server. No ORMs (like SQLAlchemy or SQLModel).</li>
         <li><strong>Pydantic:</strong> Used strictly for parsing incoming JSON request bodies (DTOs) and passing parameters safely into raw SQL statements.</li>
         <li><strong>Frontend:</strong> Decoupled Svelte SPA styled entirely with semantic Pico.css elements.</li>
       </ul>

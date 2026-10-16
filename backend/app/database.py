@@ -1,38 +1,54 @@
-import sqlite3
+import os
 from pathlib import Path
+from dotenv import load_dotenv
+import pymssql
 
-# Database path (stored in backend directory)
-DB_PATH = Path(__file__).resolve().parent.parent / "lost_and_found.db"
+# Load environment variables from .env file located in backend/
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
+
+MSSQL_SERVER = os.getenv("MSSQL_SERVER", "localhost")
+MSSQL_PORT = int(os.getenv("MSSQL_PORT", "1433"))
+MSSQL_USER = os.getenv("MSSQL_USER", "sa")
+MSSQL_PASSWORD = os.getenv("MSSQL_PASSWORD", "YourStrong@Password")
+MSSQL_DATABASE = os.getenv("MSSQL_DATABASE", "LostAndFoundDB")
 
 
-def get_db_connection() -> sqlite3.Connection:
+def get_db_connection() -> pymssql.Connection:
     """
-    Creates and returns a raw sqlite3 connection.
-    row_factory is set to sqlite3.Row for convenient dict-like column access.
+    Creates and returns a raw Microsoft SQL Server connection using pymssql.
+    as_dict=True enables dictionary-like row access (column_name -> value).
     """
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    # Ensure foreign keys are enforced in SQLite
-    conn.execute("PRAGMA foreign_keys = ON;")
+    conn = pymssql.connect(
+        server=MSSQL_SERVER,
+        port=MSSQL_PORT,
+        user=MSSQL_USER,
+        password=MSSQL_PASSWORD,
+        database=MSSQL_DATABASE,
+        as_dict=True,
+        autocommit=False,
+    )
     return conn
 
 
 def init_db() -> None:
     """
-    Initialize database tables with explicit raw SQL strings.
+    Initialize database tables with explicit raw T-SQL (Transact-SQL) strings.
     TODO: Add table creation statements here once the team finalizes the ERD.
     Example:
         conn = get_db_connection()
         try:
-            with conn:
-                conn.execute('''
-                    CREATE TABLE IF NOT EXISTS items (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+            with conn.cursor() as cursor:
+                cursor.execute('''
+                    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='items' AND xtype='U')
+                    CREATE TABLE items (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        title NVARCHAR(255) NOT NULL,
                         ...
                     );
                 ''')
+            conn.commit()
         finally:
             conn.close()
     """
     pass
-
